@@ -340,5 +340,75 @@ namespace SekaiRLA
 
             // clip.EnsureQuaternionContinuity();
         }
+
+        [System.Serializable]
+        public class FacialData
+        {
+            public float time;
+            public float value;
+        }
+
+        [Button]
+        public void ImportFacialAnimationFromFolder()
+        {
+            archivePath = string.Format(_prskFolderPath,
+                AssetBundleNames.GetStreamingLiveArchiveName($"{streamingDataName}-{liveIndex}"));
+            jsonFolderPath = $"{archivePath}_anim/{blockName}";
+
+            var files = Directory.GetFiles(jsonFolderPath, "*.json", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                if (!file.Contains("blendshape")) continue;
+                jsonFilePath = file;
+                ImportFacialAnimationFromJson();
+            }
+        }
+
+        private void ImportFacialAnimationFromJson()
+        {
+            string json = File.ReadAllText(jsonFilePath);
+            var clipName = Path.GetFileNameWithoutExtension(jsonFilePath);
+            _animPath = Path.Combine(_outputFolder, clipName + ".anim");
+
+            if (File.Exists(_animPath))
+            {
+                Debug.Log("Animation clip already exists: " + _animPath);
+                return;
+            }
+
+            var animationData = JsonConvert.DeserializeObject<Dictionary<string, List<FacialData>>>(json);
+
+            AnimationClip clip = new AnimationClip();
+
+            foreach (KeyValuePair<string, List<FacialData>> anim in animationData)
+            {
+                CreateFacialAnimationCurves(clip, anim.Key, anim.Value);
+            }
+
+            AssetDatabase.CreateAsset(clip, _animPath);
+            AssetDatabase.SaveAssets();
+            Debug.Log("Animation clip saved to: " + _animPath);
+        }
+
+        private void CreateFacialAnimationCurves(AnimationClip clip, string blendshape, List<FacialData> animValue)
+        {
+            AnimationCurve curve = new AnimationCurve();
+
+            var previoustime = 0f;
+            foreach (var keyframe in animValue)
+            {
+                var time = keyframe.time;
+                var dt = time - previoustime;
+                previoustime = time;
+                if (dt < _deltaTime)
+                {
+                    continue;
+                }
+
+                curve.AddKey(keyframe.time, keyframe.value);
+            }
+
+            clip.SetCurve("Face", typeof(SkinnedMeshRenderer), $"blendShape.{blendshape}", curve);
+        }
     }
 }
